@@ -1,0 +1,83 @@
+\documentclass[a4paper,frenchb,12pt]{report}
+
+%%%
+%%% DOCUMENT WIDE MACROS
+%%%
+
+\title{\textsc{\LARGE Rapport de stage}}
+\author{}
+\date{}
+
+%%%
+%%% VARIOUS PACKAGES
+%%%
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[frenchb]{babel}
+\usepackage[x11names,rgb]{xcolor}
+\usepackage[pdftex]{graphicx}
+\usepackage[final]{pdfpages}
+\usepackage{verbatim}
+\usepackage{pgf}
+\usepackage{float}
+\usepackage{url}
+\usepackage{txfonts}
+\usepackage{eurosym}
+\usepackage{hyperref}
+\usepackage{fancyvrb}
+\usepackage{indentfirst}
+\usepackage{tikz}
+\usetikzlibrary{decorations,arrows,shapes,positioning,patterns}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.3}
+
+\begin{document}
+
+\tableofcontents
+
+<% aggregated_by_op.sort.each do |op, data| %>
+
+\section{<%= op %>}
+
+<% data.each do |metric, data| %>
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}
+    \begin{axis}[
+      x tick label style={/pgf/number format/1000 sep=},
+      ylabel=Throughput (kB/s),
+%      enlargelimits=0.15,
+      legend style={at={(0.5,-0.15)}, anchor=north,legend columns=1,font=\footnotesize},
+      ybar=5pt,% configures ‘bar shift’
+      bar width=9pt,
+      nodes near coords,
+      width=\textwidth
+      ]
+
+      <% i = 0 %>
+      <% data.each do |tag, aggregates| %>
+      <% i = i + 1 %>
+      \addplot
+      coordinates { (<%= i %>, <%= aggregates[:avg] %>) };
+      <%= tag.to_s().capitalize().gsub("_", "\\\\_") %>
+      <% end %>
+
+      \legend{<%= data.keys().join(",").gsub("_", "\\\\_") %>}
+    \end{axis}
+  \end{tikzpicture}
+
+  \caption{<%= op %>}
+\end{figure}
+
+<% end %>
+<% end %>
+
+\end{document}
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: t
+%%% TeX-PDF-mode: t
+%%% End:

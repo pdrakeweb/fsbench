@@ -5,7 +5,7 @@
 ### ARGV[0] is assumed to be desired result tarball name
 ###
 
-TMP_FOLDER = "~/fsbench-data"
+TMP_FOLDER = "/mnt/xfs_over_e3/poney"
 RES_FOLDER = "~/fsbench-results"
 ITERATIONS = 5
 
@@ -36,7 +36,9 @@ processors = "-l #{np} -u #{np}"
 ### Test can be repeated several times
 ###
 
-iterations.times do |i|
+ITERATIONS.times do |i|
+  puts "#{Time.now} --- Iteration #{i}"
+
   ###
   ### Run tests with various combinations
   ###
@@ -45,10 +47,11 @@ iterations.times do |i|
     record_sizes.each do |rsize|
       result_tag = "Fs#{fsize}_Rs#{rsize}_Np#{np}"
       f = "-F "; np.times { |p| f << "#{tmp_folder}/#{result_tag}_tmp_#{p} " }
-      args = "#{processors} -s #{fsize} -r #{rsize} -R -b #{result_tag}.xls -j 1 #{f} "
-      args << "| tee -a " + File.join(tmp_folder, "#{result_tag}.out")
+      args = "#{processors} -s #{fsize} -r #{rsize} -R -b #{res_folder}/#{result_tag}.xls -j 1 #{f}"
+      args << "| tee -a " + File.join(res_folder, "#{result_tag}.out")
 
-      `./iozone #{args}`
+      puts "#{Time.now} - #{fsize} file, #{rsize} record"
+      `./iozone #{args}`      
       puts "... FAIL!!!!!!" unless $?.success?
     end
   end
@@ -58,18 +61,19 @@ iterations.times do |i|
   ###
 
   # Make up a useful tarball name if none provided
-  tarball_tag = ARGV[0] ? ARGV[0].dup() : `uname -n` + '-' + `uname -p`
+  tarball_tag = ARGV[0] ? ARGV[0].dup() : `uname -n`.strip() + '-' + `uname -p`.strip()
   tarball_tag << "-fsbench"
 
   # Add suffix if necessary
   j = 0
-  tarball = File.join(res_folder, '#{tarball_tag}-#{i.to_s}.0.tbz2')
+  tarball = File.join(res_folder, "#{tarball_tag}-#{i.to_s}.0.tbz2")
   while File.exists?(tarball) do
     j = j + 1
-    tarball = File.join(res_folder, '#{tarball_tag}-#{i.to_s}.#{j.to_s}.tbz2')
+    tarball = File.join(res_folder, "#{tarball_tag}-#{i.to_s}.#{j.to_s}.tbz2")
   end
 
   # Do it
-  `tar cjf #{res_folder}/#{tarball} #{tmp_folder}/*.out #{tmp_folder}/*.xls`
-  `rm -f #{tmp_folder}/*.out #{tmp_folder}/*.xls`
+  puts "#{Time.now} - Tarballed in #{tarball}"
+  `cd #{res_folder}; tar cjf #{tarball} *.out *.xls`
+  `cd #{res_folder}; rm -f *.out *.xls`
 end

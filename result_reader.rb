@@ -2,6 +2,25 @@
 
 require 'pp'
 require 'fileutils'
+require 'optparse'
+require 'ostruct'
+
+###
+### GETOPT
+###
+options = OpenStruct.new
+
+optparse = OptionParser.new do |opts|
+  opts.on('-m', '--metrics a,b,c', Array, 'list of regex to plot (no flag = all plots)') { |l| options.metrics = l }
+  opts.on('-h', '--help', 'display this screen') do
+    puts "Usage: #{$0} [opts] file1 file2 ..."
+    o = opts.to_s().split("\n"); o.shift; puts o; exit
+  end
+end
+optparse.parse!
+
+metric_filters = []
+options.metrics && options.metrics.each { |m| metric_filters << Regexp.new(m) }
 
 ###
 ### Statistics utilities
@@ -90,9 +109,8 @@ ARGV.each do |f|
     puts "File #{f} has improper name"
     next
   end
-  batch_tag = $1
+  batch_tag = $1.split('/').last()
   batch_ver = $2
-  puts "Loading #{$1} : #{$2}"
 
   # unpacks tarball in temp dir
   FileUtils.mkdir("/tmp/fsbench") unless File.exists?("/tmp/fsbench")
@@ -102,7 +120,7 @@ ARGV.each do |f|
 
   # munch output files
   Dir::glob("/tmp/fsbench/**/*.out").each do |outfile|
-    puts " - #{outfile}"
+#    puts " - #{outfile}"
     results[batch_tag] ||= {}
     results[batch_tag][batch_ver] ||= {}
     new_poney = parseomatic(outfile)
@@ -118,7 +136,10 @@ end
 ### (aggregates same-tag / same-op data of different versions)
 ###
 
+aggregated_by_tag = {}
+aggregated_by_op = {}
 results.each_pair do |tag, versions|
+  puts '"=>>>TAG: ' + tag
   # Reorder data
   reordered = {}
   versions.each_pair do |version, data|
@@ -131,22 +152,47 @@ results.each_pair do |tag, versions|
     end
   end
 
-  pp reordered
-  exit 3
-
   aggregates = {}
   reordered.each_pair do |operation, data|
+    aggregated_by_op[operation] ||= {}
+
     aggregates[operation] = {}
+
+    metrics = {}
     data.each_pair do |metric, values|
       # fixme : min max
-      aggregates[operation][metric] = {}
-      aggregates[operation][metric][:avg] = values.mean()
-      aggregates[operation][metric][:dev] = values.deviation()
-    end
-  end
-  pp aggregates
-  exit 2
+      metrics[metric] = {}
+      metrics[metric][:avg] = values.mean()
+      metrics[metric][:dev] = values.deviation()
 
-  pp averages
+      aggregated_by_op[operation][metric] ||= {}
+      aggregated_by_op[operation][metric][tag] = metrics[metric]
+    end
+    aggregates[operation] = metrics
+  end
+  aggregated_by_tag[tag] = aggregates
 end
-exit 1
+
+###
+### Prepare graphic file (TiKZ/ERB template)
+###
+
+# Remove stuff if metrics were specified on the CLI
+keyset = aggregated_by_op.keys.clone
+filtered_keyset = []
+metric_filters.each do |re|
+  part = keyset.map { |k| k if re.match(k) }
+  filtered_keyset = filtered_keyset + part.compact
+end
+aggregated_by_op.delete_if { |o,v| not filtered_keyset.include? (o) } unless metric_filters.empty?
+
+# Prepare LaTeX source
+require 'erb'
+tpl = ERB.new(IO.readlines('report/template.tex').join())
+stuff = tpl.result(binding)
+File.open("report.tex", "w") { |io| io.write(stuff) }
+
+# Run LaTeX and open up pdf if successful
+system('pdflatex -interaction=nonstopmode -halt-on-error -output-directory=report report.tex')
+system('pdflatex -interaction=nonstopmode -halt-on-error -output-directory=report report.tex') # two times, for toc
+system('okular --unique report/report.pdf') if $?.success?
