@@ -1,4 +1,4 @@
-\documentclass[a4paper,frenchb,12pt]{report}
+\documentclass[a4paper,frenchb,12pt]{article}
 
 %%%
 %%% DOCUMENT WIDE MACROS
@@ -28,6 +28,7 @@
 \usepackage{fancyvrb}
 \usepackage{indentfirst}
 \usepackage{tikz}
+\usepackage{a4wide}
 \usetikzlibrary{decorations,arrows,shapes,positioning,patterns}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.3}
@@ -35,43 +36,95 @@
 \begin{document}
 
 \tableofcontents
+\newpage
 
-<% aggregated_by_op.sort.each do |op, data| %>
+<%
+plotcolors = []
+plotcolors << "Aquamarine3"
+plotcolors << "Chartreuse3"
+plotcolors << "Brown3"
+plotcolors << "CadetBlue3"
+plotcolors << "Blue3"
+plotcolors << "Coral3"
+plotcolors << "DarkOliveGreen3"
+plotcolors << "DarkOrange3"
+plotcolors << "DarkOrchid3"
+plotcolors << "Goldenrod3"
+%>
 
-\section{<%= op %>}
+% USE LIKE: plotcolors.unshift(plotcolors.pop)[0]
 
-<% data.each do |metric, data| %>
+\pgfplotsset{
+  /pgfplots/bar cycle list/.style={/pgfplots/cycle list={%
+      {green,fill=blue!30!white,mark=none},%Aquamarine3
+      {red,fill=red!30!white,mark=none},%Brown3
+      {blue!60!black,fill=brown!30!white,mark=none},%DarkOliveGreen3
+      {purple,fill=gray,mark=none},%Goldenrod3
+    }
+  },
+}
 
-\begin{figure}[H]
-  \centering
+<%
+current_section = "PONEYYY"
+aggregated_by_op.sort.each do |op, data|                    # LOOP 1
+bits = op.split('-')
+%>
+
+<% if (current_section != bits[0]) %>
+\section{<%= bits[0] %>}
+<% current_section = bits[0]
+end %>
+
+<%  bits.shift() %>
+
+\subsection{<%= bits.join('-') %>}
+
+<% flip = true
+data.each do |metric, data|                                 # LOOP 2 %>
+<%= flip ? '\begin{figure}[H] '+"\n" : "" %> \begin{minipage}[h]{0.45\linewidth}
   \begin{tikzpicture}
     \begin{axis}[
-      x tick label style={/pgf/number format/1000 sep=},
-      ylabel=Throughput (kB/s),
-%      enlargelimits=0.15,
+      ylabel=Throughput (mB/s),
+      % enlargelimits=0.3,
       legend style={at={(0.5,-0.15)}, anchor=north,legend columns=1,font=\footnotesize},
-      ybar=5pt,% configures ‘bar shift’
-      bar width=9pt,
-      nodes near coords,
-      width=\textwidth
-      ]
-
-      <% i = 0 %>
-      <% data.each do |tag, aggregates| %>
-      <% i = i + 1 %>
+      nodes near coords align={anchor=north, above},
+      bar width=10pt,cycle list name=exotic,
+      width=\textwidth]
+<% i = 0
+      data.each do |tag, aggregates|                       # LOOP 3
+      i = i + 1 %>
       \addplot
-      coordinates { (<%= i %>, <%= aggregates[:avg] %>) };
-      <%= tag.to_s().capitalize().gsub("_", "\\\\_") %>
-      <% end %>
+      plot[ybar,nodes near coords,
+      error bars/.cd,y dir=both,y explicit]
+      coordinates { (<%= i %>,<%= aggregates[:avg] %>) +- (0,<%= aggregates[:dev] %>) };
+<%
+      ## Following Snippet enables display of each measured point
+      # coords = []
+      # results[tag].each_pair { |v,m| coords << "(#{i},#{m[op][metric]})" }
+      # = \addplot[only marks, mark=+]
+      # = "coordinates { #{coords.join(' ')} };"
+      # = tag.to_s().capitalize().gsub("_", "\\\\_")
 
-      \legend{<%= data.keys().join(",").gsub("_", "\\\\_") %>}
-    \end{axis}
-  \end{tikzpicture}
+      ## Closes loop 3
+      end # tag, aggregates [L3]
+      %>
 
-  \caption{<%= op %>}
-\end{figure}
+      % Legends
+<% legends = []
+  data.keys.each do |k|
+  kf = k.gsub("_", "\\\\_")
+  legends << kf
+  # legends << (kf + " values")
+  end %>
+  \legend{<%= legends.join(',') %>}
 
-<% end %>
+  \end{axis}
+\end{tikzpicture}
+\caption{<%= op %> : <%= metric.to_s().gsub("_", "\\\\_") %>}
+\end{minipage}<% flip = not(flip) %>
+<%= flip ? '\end{figure}' : '\hspace{0.05\linewidth}' %>
+<% end # each metric,data [L2] %>
+<%= flip ? '' : '\end{figure}' %>
 <% end %>
 
 \end{document}

@@ -12,6 +12,7 @@ options = OpenStruct.new
 
 optparse = OptionParser.new do |opts|
   opts.on('-m', '--metrics a,b,c', Array, 'list of regex to plot (no flag = all plots)') { |l| options.metrics = l }
+  opts.on('-g', '--generation-only', "Stop after generating LaTeX report (no compile or display)") { |b| options.i_maek_lousy_latex = b }
   opts.on('-h', '--help', 'display this screen') do
     puts "Usage: #{$0} [opts] file1 file2 ..."
     o = opts.to_s().split("\n"); o.shift; puts o; exit
@@ -86,6 +87,8 @@ def parseomatic(file)
     res[op][:min_xfer] = $1.to_f() if line =~ /Min xfer[^=]+=\s+([0-9.]+) KB/
   end
 
+  res.each_pair { |op, data| data.each_pair { |k, v| res[op][k] = v / 1024 } }
+
   return res
 end
 
@@ -139,7 +142,7 @@ end
 aggregated_by_tag = {}
 aggregated_by_op = {}
 results.each_pair do |tag, versions|
-  puts '"=>>>TAG: ' + tag
+  puts '- Loaded dataset: ' + tag
   # Reorder data
   reordered = {}
   versions.each_pair do |version, data|
@@ -190,9 +193,10 @@ aggregated_by_op.delete_if { |o,v| not filtered_keyset.include? (o) } unless met
 require 'erb'
 tpl = ERB.new(IO.readlines('report/template.tex').join())
 stuff = tpl.result(binding)
-File.open("report.tex", "w") { |io| io.write(stuff) }
+File.open("report/report.tex", "w") { |io| io.write(stuff) }
+exit(0) if options.i_maek_lousy_latex
 
 # Run LaTeX and open up pdf if successful
-system('pdflatex -interaction=nonstopmode -halt-on-error -output-directory=report report.tex')
-system('pdflatex -interaction=nonstopmode -halt-on-error -output-directory=report report.tex') # two times, for toc
-system('okular --unique report/report.pdf') if $?.success?
+system('pdflatex -interaction=nonstopmode -halt-on-error -output-directory=report report/report.tex')
+system('pdflatex -interaction=nonstopmode -halt-on-error -output-directory=report report/report.tex') # two times, for toc
+system('okular --page 2 --unique report/report.pdf') if $?.success?
