@@ -5,7 +5,10 @@
 ### ARGV[0] is assumed to be desired result tarball name
 ###
 
-TMP_FOLDER = "/mnt/xfs_over_e3/poney"
+abort "bad parameters" unless ARGV[0] and ARGV[1]
+
+# TMP_FOLDER = "/mnt/cloud/fsbench"
+TMP_FOLDER = ARGV[1]
 RES_FOLDER = "~/fsbench-results"
 ITERATIONS = 5
 
