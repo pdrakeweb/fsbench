@@ -1,0 +1,55 @@
+FSBench
+=======
+
+https://github.com/heliostech/FSBench
+elie bleton <ebleton@heliostech.fr>
+
+Introduction
+------------
+
+FSBench is a script designed to run IOZone multiple times and collect the results in convenient tarballs.
+
+A result reader script is provided that will load up the results and generate a nice LaTeX document with somewhat fancy plots, legends, and a table of contents.
+
+This is a very rough tool for now, but it does the job.
+
+Requirements
+------------
+
+- Ruby 1.8 or 1.9
+- pdfLaTeX (tested with TeXLive)
+- LaTeX PGF, TIKZ and PGFPlots packages
+- iozone (binary alongside the scripts - or symbolic link)
+
+- okular (that's hardcoded ...)
+
+Usage
+-----
+
+1) Ensure iozone is located alongside the scripts
+   (if you have installed it through your package manager,
+    "ln -s `which iozone`" should do the trick)
+
+2) Open the scripts in your favorite editor prior using them
+
+3) fs_bench.rb <tarball-name-tag> <temporary-directory>
+   <temporary-directory> must be somewhere on the filesystem you wish to test
+   <tarball-name-tag> will be the part of the legend for collected data
+
+   results default to ~/fsbench-results (constant for now)
+   each tests are run 3x5 times (non customizable either)
+
+4) repeat 3. on each filesystem you wish to test
+
+5) run "./result_reader.rb ~/fsbench-results/*" and wait for okular to open your pdf
+   you can use fancier globs
+   try "./result_reader.rb --help"
+
+Known Issues
+------------
+
+- No proper getopts as of now, lots of ugly constants, lots of hardcoded stuff.
+- PDF generation takes quite a lot of time (3 passes ...)
+- Plots can generate overful hboxes if you're using too much plot points
+- Plots have some glitches
+- Plots with more than 6 datasets have even more glitches

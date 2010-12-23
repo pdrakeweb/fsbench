@@ -4,3 +4,6 @@ auto
 *.out
 *.pdf
 *.toc
+report/report.tex
+iozone
+results/
