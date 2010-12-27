@@ -16,50 +16,79 @@
 # This file is part of FSBench (https://github.com/heliostech/FSBench)
 # Elie Bleton <ebleton@heliostech.fr>
 
-fail "see code or README before running" unless ARGV.size >= 2
+require 'optparse'
+require 'fileutils'
+require 'ostruct'
+require 'yaml'
+
+# Options defaults
+opts = OpenStruct.new
+opts.result_folder = "~/fsbench-results"
+opts.test_folder = nil
+opts.read_existing_file = nil
+opts.tarball_prefix = nil
+opts.iterations = 5
+opts.measure_latency = true
+
+opts.thread_count = `grep -c processor /proc/cpuinfo`.to_i
 
 ###
-### Parameters (getopt is overrated)
-### ARGV[0] is assumed to be desired result tarball name
+### Option parser configuration
 ###
 
-TMP_FOLDER = ARGV[1]
-RES_FOLDER = "~/fsbench-results"
-ITERATIONS = 5
+$op = OptionParser.new do |o|
+  o.banner = "Usage: #{__FILE__} [options]"
+
+  t_doc = "(MANDATORY) Folder where test files will be written/read for testing"
+  o.on("-t", "--test-folder DIR", t_doc) { |v| opts.test_folder = v }
+
+  r_doc = "Folder where result tarballs will be stored (default: #{opts.result_folder})"
+  o.on("-r", "--result-folder FOLDER", r_doc) { |v| opts.result_folder = v }
+
+  i_doc = "How many times each test will be run (default: #{opts.iterations})"
+  o.on("-i", "--iterations COUNT", i_doc) { |v| opts.iterations = v.to_i }
+
+  l_doc = "Do latency measurements (default: #{opts.measure_latency})"
+  o.on("-l", "--latency YES|NO", l_doc) do |v|
+    x = v == "YES" ? true : (v == "NO" ? false : abort("bad value for --latency"))
+    opts.measure_latency = x
+  end
+
+  p_doc = "Prefix of the result tarball (default: hostname-mountpoint-mount_type)"
+  o.on("-p", "--tarball-prefix", p_doc) { |v| opts.tarball_prefix = v }
+
+  p_doc = "Thread count (default: #{opts.thread_count})"
+  o.on("-n", "--thread-count", p_doc) { |v| opts.tarball_prefix = v }
+
+  o.on("-h", "--help", "You're reading it") { abort o.to_s }
+end.parse!
+
+abort "Test folder is mandatory. #{__FILE__} --help for more information." unless opts.test_folder
 
 ###
 ### Some maintenance around output directories
 ###
 
 require 'fileutils'
-tmp_folder = File.expand_path(TMP_FOLDER)
-FileUtils.mkdir(tmp_folder) unless File.exists?(tmp_folder)
+test_folder = File.expand_path(opts.test_folder)
+FileUtils.mkdir(test_folder) unless File.exists?(test_folder)
 
-res_folder = File.expand_path(RES_FOLDER)
-FileUtils.mkdir(res_folder) unless File.exists?(res_folder)
+result_folder = File.expand_path(opts.result_folder)
+FileUtils.mkdir(result_folder) unless File.exists?(result_folder)
 
-###
-### Sets desirable test parameters (other options hardcoded below)
-###
-
-filesizes = %w[1G]
-record_sizes = %w[16M 64M 128M]
-
-np = `grep -c processor /proc/cpuinfo`.to_i
-processors = "-l #{np} -u #{np}"
-
-# tests = "-i 0 -i 1 -i 7 -i 10"
+# Preliminary Cleanup
+`cd #{result_folder}; rm -f *.out *.xls *.yml *.dat`
 
 ###
 ### System information collection
 ###
-system_info = {}
+system_info = {};
 system_info["mount"] = `mount`
 system_info["cpuinfo"] = `cat /proc/cpuinfo`
-system_info["lspci"] = `lspci`
-system_info["lsmod"] = `lsmod`
+system_info["lspci"] = `lspci 2>/dev/null`
+system_info["lsmod"] = `lsmod 2>/dev/null`
 system_info["uname"] = `uname -a`
-system_info["sysctl"] = `sysctl -a`
+system_info["sysctl"] = `sysctl -a 2>/dev/null`
 system_info["dmesg-disks"] = `dmesg | grep -P '((s|h)d)|fs'`
 system_info["df"] = `df`
 system_info["iozone"] = `iozone -version`
@@ -73,15 +102,26 @@ system_info["iozone"] = `iozone -version`
 #   system_info["sdparm"][drive] = `sdparm #{drive}`
 # end
 
-system_info_filename = File.join(res_folder, "systeminfo.yml")
+system_info_filename = File.join(result_folder, "system_info.yml")
 File.open(system_info_filename, 'w') { |f| f.write(system_info.to_yaml) }
+
+###
+### Sets desirable test parameters (other options hardcoded below)
+###
+
+filesizes = %w[1G]
+record_sizes = %w[16K, 1M]
+processors = "-l #{opts.thread_count} -u #{opts.thread_count}"
+extra = "-j 1 " # stride = 1 means 1 record read at a time
+extra << "-p " # purge processor cache
+extra << "-Q " if opts.measure_latency
 
 ###
 ### Test can be repeated several times
 ### (allowing deviation computation during post processing)
 ###
 
-ITERATIONS.times do |i|
+opts.iterations.times do |i|
   puts "#{Time.now} --- Iteration #{i}"
 
   ###
@@ -90,10 +130,14 @@ ITERATIONS.times do |i|
 
   filesizes.each do |fsize|
     record_sizes.each do |rsize|
-      result_tag = "Fs#{fsize}_Rs#{rsize}_Np#{np}"
-      f = "-F "; np.times { |p| f << "#{tmp_folder}/#{result_tag}_tmp_#{p} " }
-      args = "#{processors} -s #{fsize} -r #{rsize} -R -b #{res_folder}/#{result_tag}.xls -j 1 #{f}"
-      args << "| tee -a " + File.join(res_folder, "#{result_tag}.out")
+      result_tag = "Fs#{fsize}_Rs#{rsize}_Np#{opts.thread_count}"
+
+      files = "-F "
+      opts.thread_count.times { |p| files << "#{test_folder}/#{result_tag}_tmp_#{p} " }
+
+      args = "#{processors} #{files} #{extra} -s #{fsize} -r #{rsize} "
+      args << "-R -b #{result_folder}/#{result_tag}.xls " # Excel output conf
+      args << "| tee -a " + File.join(result_folder, "#{result_tag}.out")
 
       puts "#{Time.now} - #{fsize} file, #{rsize} record"
       `./iozone #{args}`
@@ -106,19 +150,27 @@ ITERATIONS.times do |i|
   ###
 
   # Make up a useful tarball name if none provided
-  tarball_tag = ARGV[0] ? ARGV[0].dup() : `uname -n`.strip() + '-' + `uname -p`.strip()
-  tarball_tag << "-fsbench"
+  unless  opts.tarball_prefix
+    opts.tarball_prefix = `uname -n`.strip() + '-' + `uname -m`.strip()
+    opts.tarball_prefix << "-fsbench"
+  end
 
-  # Add suffix if necessary
+  # Add suffix (.0, .1, .2, ..) if necessary
   j = 0
-  tarball = File.join(res_folder, "#{tarball_tag}-#{i.to_s}.0.tbz2")
+  tarball = File.join(result_folder, "#{opts.tarball_prefix}-#{i.to_s}.0.tbz2")
   while File.exists?(tarball) do
     j = j + 1
-    tarball = File.join(res_folder, "#{tarball_tag}-#{i.to_s}.#{j.to_s}.tbz2")
+    tarball = File.join(result_folder, "#{opts.tarball_prefix}-#{i.to_s}.#{j.to_s}.tbz2")
   end
 
   # Do it
   puts "#{Time.now} - Tarballed in #{tarball}"
-  `cd #{res_folder}; tar cjf #{tarball} *.out *.xls *.yml`
-  `cd #{res_folder}; rm -f *.out *.xls *.yml`
+  `mv *.dat #{result_folder}/` if opts.measure_latency
+  `cd #{result_folder}; tar cjf #{tarball} *.out *.xls *.yml #{"*.dat" if opts.measure_latency }`
+
+  # Partial cleanup
+  `cd #{result_folder}; rm -f *.out *.xls *.dat`
 end
+
+# Final cleanup
+`rm -f #{result_folder}/*.yml`
