@@ -65,6 +65,8 @@ end.parse!
 
 abort "Test folder is mandatory. #{__FILE__} --help for more information." unless opts.test_folder
 
+abort "You need the iozone binary in your current working directory." unless File.exists?(File.expand_path("./iozone"))
+
 ###
 ### Some maintenance around output directories
 ###
@@ -141,7 +143,11 @@ opts.iterations.times do |i|
 
       puts "#{Time.now} - #{fsize} file, #{rsize} record"
       `./iozone #{args}`
-      puts "... FAIL!!!!!!" unless $?.success?
+      puts "iozone failure. Args:\n#{args}" unless $?.success?
+
+      Dir["*dat"].each do |dat|
+        File.rename(dat, "#{result_tag}_#{dat}") if dat =~ /^Child/
+      end if opts.measure_latency
     end
   end
 
