@@ -55,7 +55,7 @@ $op = OptionParser.new do |o|
   end
 
   p_doc = "Prefix of the result tarball (default: hostname-mountpoint-mount_type)"
-  o.on("-p", "--tarball-prefix", p_doc) { |v| opts.tarball_prefix = v }
+  o.on("-p", "--tarball-prefix PREFIX", p_doc) { |v| opts.tarball_prefix = v }
 
   p_doc = "Thread count (default: #{opts.thread_count})"
   o.on("-n", "--thread-count", p_doc) { |v| opts.tarball_prefix = v }
@@ -89,9 +89,9 @@ system_info["lspci"] = `lspci 2>/dev/null`
 system_info["lsmod"] = `lsmod 2>/dev/null`
 system_info["uname"] = `uname -a`
 system_info["sysctl"] = `sysctl -a 2>/dev/null`
-system_info["dmesg-disks"] = `dmesg | grep -P '((s|h)d)|fs'`
+system_info["dmesg-disks"] = `dmesg | pgrep '((s|h)d)|fs'`
 system_info["df"] = `df`
-system_info["iozone"] = `iozone -version`
+system_info["iozone"] = `./iozone -version`
 
 # disks = `df | grep ^/dev | sed -r 's#(/dev/[^0-9]+)[0-9]+.*#\1#' | uniq`
 # disks.split.each do |drive|
