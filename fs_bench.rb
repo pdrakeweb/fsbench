@@ -112,7 +112,7 @@ File.open(system_info_filename, 'w') { |f| f.write(system_info.to_yaml) }
 ###
 
 filesizes = %w[1G]
-record_sizes = %w[16K, 1M]
+record_sizes = %w[16K 1M]
 processors = "-l #{opts.thread_count} -u #{opts.thread_count}"
 extra = "-j 1 " # stride = 1 means 1 record read at a time
 extra << "-p " # purge processor cache
