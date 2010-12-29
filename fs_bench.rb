@@ -79,7 +79,7 @@ result_folder = File.expand_path(opts.result_folder)
 FileUtils.mkdir(result_folder) unless File.exists?(result_folder)
 
 # Preliminary Cleanup
-`cd #{result_folder}; rm -f *.out *.xls *.yml *.dat`
+`rm *.dat; cd #{result_folder}; rm -f *.out *.xls *.yml *.dat`
 
 ###
 ### System information collection
