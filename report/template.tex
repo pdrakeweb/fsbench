@@ -1,10 +1,10 @@
-\documentclass[a4paper,frenchb,12pt]{article}
+\documentclass[a4paper,12pt]{article}
 
 %%%
 %%% DOCUMENT WIDE MACROS
 %%%
 
-\title{\textsc{\LARGE Rapport de stage}}
+\title{\textsc{\LARGE FSBench report}}
 \author{}
 \date{}
 
@@ -14,7 +14,7 @@
 
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage[frenchb]{babel}
+\usepackage[english]{babel}
 \usepackage[x11names,rgb]{xcolor}
 \usepackage[pdftex]{graphicx}
 \usepackage[final]{pdfpages}
@@ -37,22 +37,8 @@
 
 \tableofcontents
 \newpage
-
-<%
-plotcolors = []
-plotcolors << "Aquamarine3"
-plotcolors << "Chartreuse3"
-plotcolors << "Brown3"
-plotcolors << "CadetBlue3"
-plotcolors << "Blue3"
-plotcolors << "Coral3"
-plotcolors << "DarkOliveGreen3"
-plotcolors << "DarkOrange3"
-plotcolors << "DarkOrchid3"
-plotcolors << "Goldenrod3"
-%>
-
-% USE LIKE: plotcolors.unshift(plotcolors.pop)[0]
+\listoffigures
+\newpage
 
 \pgfplotsset{
   /pgfplots/bar cycle list/.style={/pgfplots/cycle list={%
@@ -62,34 +48,40 @@ plotcolors << "Goldenrod3"
       {purple,fill=gray,mark=none},%Goldenrod3
     }
   },
+  /pgfplots/every axis legend/.append style={%
+    at={(0.5,-0.15)},
+    anchor=north,
+    legend columns=1,
+    font=\footnotesize
+  },
+  /pgfplots/every axis={%
+  },
 }
 
 <%
-current_section = "PONEYYY"
+current_section = "INVALID SECTION"
 aggregated_by_op.sort.each do |op, data|                    # LOOP 1
-bits = op.split('-')
-%>
+  bits = op.split('-')
 
-<% if (current_section != bits[0]) %>
-\section{<%= bits[0] %>}
-<% current_section = bits[0]
-end %>
-
-<%  bits.shift() %>
-
+  if (current_section != bits[0]) %>
+    \section{<%= bits[0] %>}
+<%
+    current_section = bits[0]
+  end
+  bits.shift() %>
 \subsection{<%= bits.join('-') %>}
-
-<% flip = true
-data.each do |metric, data|                                 # LOOP 2 %>
-<%= flip ? '\begin{figure}[H] '+"\n" : "" %> \begin{minipage}[h]{0.45\linewidth}
+<%
+  flip = true
+  data.each do |metric, data|                               # LOOP 2 %>
+<%= flip ? "\\begin{figure}[H]\n" : "" %> \begin{minipage}[h]{0.45\linewidth}
   \begin{tikzpicture}
-    \begin{axis}[
-      ylabel=Throughput (mB/s),
-      % enlargelimits=0.3,
-      legend style={at={(0.5,-0.15)}, anchor=north,legend columns=1,font=\footnotesize},
+    \begin{axis}[%
+      enlarge x limits=0.5, enlarge y limits={upper, 0.6},
+      xmajorticks=false, xminorticks=false,
       nodes near coords align={anchor=north, above},
-      bar width=10pt,cycle list name=exotic,
-      width=\textwidth]
+      bar width=8pt,cycle list name=exotic,
+      ylabel=<%= metric.to_s.start_with?("latency") ? "Latency ($\\mu$s)" : "Throughput (mB/s)" %>,
+      width=0.95\textwidth]
 <% i = 0
       data.each do |tag, aggregates|                       # LOOP 3
       i = i + 1 %>
@@ -108,16 +100,14 @@ data.each do |metric, data|                                 # LOOP 2 %>
       ## Closes loop 3
       end # tag, aggregates [L3]
       %>
-
-      % Legends
-<% legends = []
+<% # Legends
+  legends = []
   data.keys.each do |k|
   kf = k.gsub("_", "\\\\_")
   legends << kf
   # legends << (kf + " values")
   end %>
   \legend{<%= legends.join(',') %>}
-
   \end{axis}
 \end{tikzpicture}
 \caption{<%= op %> : <%= metric.to_s().gsub("_", "\\\\_") %>}
