@@ -179,11 +179,12 @@ end
 ###
 
 def sizestr_in_K (str)
-  base = str[0..2].to_i
-  return base if str.end_with? "K"
-  return base * 1024 if str.end_with? "M"
-  return base * 1024 * 1024 if str.end_with? "G"
-  return base * 1024 * 1024 * 1024 if str.end_with? "T"
+  fail "invalid size string" unless str.upcase =~ /([0-9]+)([A-Z]?)/
+  base, letter = $1.to_i, $2
+  return base if letter == "K"
+  return base * 1024 if letter == "M"
+  return base * 1024 * 1024 if letter == "G"
+  return base * 1024 * 1024 * 1024 if letter == "T"
   return base / 1024.0
 end
 
