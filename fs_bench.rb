@@ -29,7 +29,8 @@ opts.read_existing_file = nil
 opts.tarball_prefix = nil
 opts.iterations = 5
 opts.measure_latency = true
-
+opts.file_sizes = %w[1M 32M]
+opts.block_sizes = %w[4K 512K]
 opts.thread_count = `grep -c processor /proc/cpuinfo`.to_i
 
 ###
@@ -58,7 +59,13 @@ $op = OptionParser.new do |o|
   o.on("-p", "--tarball-prefix PREFIX", p_doc) { |v| opts.tarball_prefix = v }
 
   p_doc = "Thread count (default: #{opts.thread_count})"
-  o.on("-n", "--thread-count", p_doc) { |v| opts.tarball_prefix = v }
+  o.on("-n", "--thread-count COUNT", p_doc) { |v| opts.tarball_prefix = v }
+
+  f_doc = "File sizes to test, comma separated (default: #{opts.file_sizes.join(",")})"
+  o.on("-s", "--file-sizes SIZE_LIST", f_doc) { |v| opts.file_sizes = v.split(",") }
+
+  f_doc = "Block sizes to test, comma separated (default: #{opts.block_sizes.join(",")})"
+  o.on("-b", "--block-sizes SIZE_LIST", f_doc) { |v| opts.block_sizes = v.split(",") }
 
   o.on("-h", "--help", "You're reading it") { abort o.to_s }
 end.parse!
@@ -111,8 +118,6 @@ File.open(system_info_filename, 'w') { |f| f.write(system_info.to_yaml) }
 ### Sets desirable test parameters (other options hardcoded below)
 ###
 
-filesizes = %w[8M]
-record_sizes = %w[16K 1M]
 processors = "-l #{opts.thread_count} -u #{opts.thread_count}"
 extra = "-j 1 " # stride = 1 means 1 record read at a time
 extra << "-p " # purge processor cache
@@ -130,8 +135,8 @@ opts.iterations.times do |i|
   ### Run tests with various combinations
   ###
 
-  filesizes.each do |fsize|
-    record_sizes.each do |rsize|
+  opts.file_sizes.each do |fsize|
+    opts.block_sizes.each do |rsize|
       result_tag = "Fs#{fsize}_Rs#{rsize}_Np#{opts.thread_count}"
 
       files = "-F "
