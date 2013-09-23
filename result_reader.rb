@@ -125,19 +125,19 @@ def parse_ioz_output(file)
     np = $1.to_i() if line =~ /Min process = ([0-9]+)/
 
     if line =~ /Children see throughput for\s+[0-9]\s+([a-zA-Z\- ]+)\s+=\s+([0-9.]+) KB/
-      op = "#{$1.chop.gsub("-", " ")}-F#{fsize}-R#{rsize}"
+      op = "#{$1.chop.gsub("-", " ")}"
       res[op] ||= {}
-      res[op][:client] = $2.to_f()
+      res[op][fsize] ||= {}
+      res[op][fsize][rsize] ||= {}
+      res[op][fsize][rsize][:client] = $2.to_f()
     end
 
-    res[op][:parent] = $1.to_f() if line =~ /Parent sees[^=]+=\s+([0-9.]+) KB/
-    res[op][:min] = $1.to_f() if line =~ /Min throughput[^=]+=\s+([0-9.]+) KB/
-    res[op][:max] = $1.to_f() if line =~ /Max throughput[^=]+=\s+([0-9.]+) KB/
-    res[op][:avg] = $1.to_f() if line =~ /Avg throughput[^=]+=\s+([0-9.]+) KB/
-    res[op][:min_xfer] = $1.to_f() if line =~ /Min xfer[^=]+=\s+([0-9.]+) KB/
+    res[op][fsize][rsize][:parent] = $1.to_f() if line =~ /Parent sees[^=]+=\s+([0-9.]+) KB/
+    res[op][fsize][rsize][:min] = $1.to_f() if line =~ /Min throughput[^=]+=\s+([0-9.]+) KB/
+    res[op][fsize][rsize][:max] = $1.to_f() if line =~ /Max throughput[^=]+=\s+([0-9.]+) KB/
+    res[op][fsize][rsize][:avg] = $1.to_f() if line =~ /Avg throughput[^=]+=\s+([0-9.]+) KB/
+    res[op][fsize][rsize][:min_xfer] = $1.to_f() if line =~ /Min xfer[^=]+=\s+([0-9.]+) KB/
   end
-
-  res.each_pair { |op, data| data.each_pair { |k, v| res[op][k] = v / 1024 } }
 
   return res
 end
@@ -326,38 +326,4 @@ results.each_pair do |tag, versions|
   aggregated_by_tag[tag] = aggregates
 end
 
-###
-### Prepare graphic file (TiKZ/ERB template)
-###
-
-puts "### Generating .tex"
-
-# Remove operations if specified
-keyset = aggregated_by_op.keys.clone
-filtered_keyset = []
-operation_filters.each do |re|
-  part = keyset.map { |k| k if re.match(k) }
-  filtered_keyset = filtered_keyset + part.compact
-end
-aggregated_by_op.delete_if { |o,v| not filtered_keyset.include? (o) } unless operation_filters.empty?
-
-# Prepare LaTeX source
-require 'erb'
-tpl = ERB.new(IO.readlines('report/template.tex').join())
-stuff = tpl.result(binding)
-File.open("report/report.tex", "w") { |io| io.write(stuff) }
-exit(0) if options.i_maek_lousy_latex
-
-# Cleanup (LaTeX may not have enough memory to run if this script keeps all of it ...)
-puts "### Cleaning up"
-aggregated_by_op, aggregated_by_tag, results = nil, nil, nil
-GC.start
-
-# Run LaTeX and open up pdf if successful
-puts "### Running LaTeX"
-system('pdflatex -interaction=nonstopmode -halt-on-error -output-directory=report report/report.tex')
-system('pdflatex -interaction=nonstopmode -halt-on-error -output-directory=report report/report.tex') # two times, for toc
-
-if options.viewer
-  system('#{options.viewer} --page 2 --unique report/report.pdf') if $?.success?
-end
+puts aggregates_by_op.inspect
