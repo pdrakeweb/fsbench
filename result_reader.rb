@@ -20,6 +20,8 @@ require 'pp'
 require 'fileutils'
 require 'optparse'
 require 'ostruct'
+require 'rubygems'
+require 'spreadsheet'
 
 TempDir = "/tmp/fsbench-result-reader"
 
@@ -125,11 +127,10 @@ def parse_ioz_output(file)
     np = $1.to_i() if line =~ /Min process = ([0-9]+)/
 
     if line =~ /Children see throughput for\s+[0-9]\s+([a-zA-Z\- ]+)\s+=\s+([0-9.]+) KB/
+      client_value = $2.to_f
       op = "#{$1.chop.gsub("-", " ")}"
       res[op] ||= {}
-      res[op][fsize] ||= {}
-      res[op][fsize][rsize] ||= {}
-      res[op][fsize][rsize][:client] = $2.to_f()
+      res[op].merge!({fsize => {rsize => {:client => client_value}}})
     end
 
     res[op][fsize][rsize][:parent] = $1.to_f() if line =~ /Parent sees[^=]+=\s+([0-9.]+) KB/
@@ -156,9 +157,9 @@ def load_ioz_dat(file)
       parts << current
       current = []
     else
-      line =~ /(?<off>[0-9]+)[^0-9]+(?<lat>[0-9]+)[^0-9]+(?<chunk>[0-9]+)/
-      next unless $~
-      current << $~["lat"].to_i
+      line =~ /([0-9]+)[^0-9]+([0-9]+)[^0-9]+([0-9]+)/
+      next unless $1
+      current << $1.to_i
     end
   end
   parts << current
@@ -207,12 +208,13 @@ ARGV.each do |f|
   puts "- #{f}"
 
   # extract information from tarball name
-  unless f =~ /(?<tag>.*)-(?<ver>[0-9.]*).tbz2/
+  unless f =~ /(.*)-([0-9.]*).tbz2/
     puts "File #{f} has improper name"
     next
   end
-  batch_tag = $~["tag"].split('/').last()
-  batch_ver = $~["ver"]
+  batch_tag = $1
+  batch_ver = $2
+  batch_tag = batch_tag.split('/').last()
   results[batch_tag] ||= {}
   results[batch_tag][batch_ver] ||= {}
 
@@ -227,45 +229,6 @@ ARGV.each do |f|
     results[batch_tag][batch_ver].merge!(parse_ioz_output(outfile))
   end
 
-  # process latency files
-  latencies = {}
-  Dir::glob("#{TempDir}/**/*.dat").each do |datfile|
-    bname = File.basename(datfile)
-    bname =~ /Fs(?<fs>[^_]+)_Rs(?<rs>[^_]+)_Np[^_]+_Child_(?<c>\d+)_(?<op>[^.]+)\.dat/
-    unless $~
-      STDERR.puts "Warning: #{bname} has unexpected name"
-      next
-    end
-
-    fs = sizestr_in_K($~["fs"])
-    rs = sizestr_in_K($~["rs"])
-
-    if dat = load_ioz_dat(datfile)
-      k = "#{op_map[$~["op"]]}-F#{fs}-R#{rs}"
-      latencies[k] ||= []
-      latencies[k] << dat
-    end
-  end
-
-  # aggregate latencies, then merge into results
-  latencies.each_pair do |k, data|
-    min, max, means, deviations = [], [], [], []
-    data.each do |child_data|
-      next if child_data.empty?
-      min << child_data.min
-      max << child_data.max
-      means << child_data.mean
-      deviations << child_data.deviation
-    end
-
-    aggregated_latencies = {}
-    aggregated_latencies[:latency_min] = min.min
-    aggregated_latencies[:latency_max] = max.max
-    aggregated_latencies[:latency_avg] = means.mean
-    aggregated_latencies[:latency_dev] = deviations.mean
-    results[batch_tag][batch_ver][k].merge!(aggregated_latencies)
-  end
-
   # wipe temp dir
   FileUtils.remove_dir(TempDir, true)
 end
@@ -277,53 +240,81 @@ puts "### Aggregating all test iterations"
 ### (aggregates same-tag / same-op data of different iterations)
 ###
 
-aggregated_by_tag = {}
 aggregated_by_op = {}
 results.each_pair do |tag, versions|
   puts '- Loaded dataset: ' + tag
   # Reorder data
   reordered = {}
   versions.each_pair do |version, data|
-    data.each_pair do |operation, metrics|
+    data.each_pair do |operation, fsize_metrics|
       reordered[operation] ||= {}
-      metrics.each_pair do |metric, value|
-        reordered[operation][metric] ||= []
-        reordered[operation][metric] << value
-      end
-    end
-  end
-
-  aggregates = {}
-  reordered.each_pair do |operation, data|
-    aggregated_by_op[operation] ||= {}
-
-    aggregates[operation] = {}
-
-    metrics = {}
-    data.each_pair do |metric, values|
-      # remove metrics if specified
-      if options.metrics
-        pass = false
-        metric_filters.each do |re|
-          if re.match(metric)
-            pass = true
-            break
+      fsize_metrics.each_pair do |fsize, rsize_metrics|
+        reordered[operation][fsize] ||= {}
+        rsize_metrics.each_pair do |rsize, metrics|
+          reordered[operation][fsize][rsize] ||= {}
+          metrics.each_pair do |metric, value|
+            reordered[operation][fsize][rsize][metric] ||= []
+            reordered[operation][fsize][rsize][metric] << value
           end
         end
-        next unless pass
       end
-
-      # fixme : min max
-      metrics[metric] = {}
-      metrics[metric][:avg] = values.mean()
-      metrics[metric][:dev] = values.deviation()
-
-      aggregated_by_op[operation][metric] ||= {}
-      aggregated_by_op[operation][metric][tag] = metrics[metric]
     end
-    aggregates[operation] = metrics
   end
-  aggregated_by_tag[tag] = aggregates
+
+  reordered.each_pair do |operation, fsize_data|
+    aggregated_by_op[operation] ||= {}
+    fsize_data.each_pair do |fsize, rsize_data|
+      aggregated_by_op[operation][fsize] ||= {}
+      rsize_data.each_pair do |rsize, data|
+        aggregated_by_op[operation][fsize][rsize] ||= {}
+
+        metrics = {}
+        data.each_pair do |metric, values|
+          # remove metrics if specified
+          if options.metrics
+            pass = false
+            metric_filters.each do |re|
+              if re.match(metric.to_s)
+                pass = true
+                break
+              end
+            end
+            next unless pass
+          end
+    
+          # fixme : min max
+          metrics[metric] = {}
+          metrics[metric][:avg] = values.mean()
+          metrics[metric][:dev] = values.deviation()
+
+          aggregated_by_op[operation][fsize][rsize][metric] ||= {}
+          aggregated_by_op[operation][fsize][rsize][metric][tag] = metrics[metric]
+        end
+      end
+    end
+  end
 end
 
-puts aggregates_by_op.inspect
+
+PP.pp(aggregated_by_op)
+exit
+
+# TODO make this work
+Spreadsheet.client_encoding = 'UTF-8'
+book = Spreadsheet::Workbook.new
+aggregated_by_op.each do |op, fsize_data|
+  cur_row = 0
+  sheet = book.create_worksheet :name => op
+  fsize_keys = fsize_data.keys
+  sheet.row(cur_row+=1).push fsize_keys
+  fsize_data.each do |fsize, rsize_data|
+    rsize_data.each do |rsize, parent_data|
+      parent_data.each do |parent, data|
+        sheet.cell()
+        sheet.row(cur_row+=1).push [ "#{parent}_#{rsize}" ] + data
+      end
+    end
+  end
+end
+book.write '/tmp/output.xls'
+
